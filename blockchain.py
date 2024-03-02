@@ -5,6 +5,9 @@ from uuid import uuid4
 from urllib.parse import urlparse
 from flask import Flask, jsonify, request
 import requests
+import socket
+import threading
+import json
 
 
 class Blockchain:
@@ -116,6 +119,54 @@ node_identifier = str(uuid4()).replace('-', '')
 # Instantiate the Blockchain
 blockchain = Blockchain()
 
+# P2P Network
+peers = set()
+lock = threading.Lock()
+
+# P2P Server
+class P2PServer(threading.Thread):
+    def __init__(self):
+        super().__init__()
+
+    def run(self):
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind(('0.0.0.0', 3000))
+        server_socket.listen()
+
+        while True:
+            client_socket, addr = server_socket.accept()
+            threading.Thread(target=self.handle_client, args=(client_socket,)).start()
+
+    def handle_client(self, client_socket):
+        data = client_socket.recv(1024).decode()
+        message = json.loads(data)
+
+        with lock:
+            peers.add(message['sender'])
+
+        if 'blockchain_request' in message and message['blockchain_request']:
+            response = {'blockchain': blockchain.chain}
+            client_socket.send(json.dumps(response).encode())
+
+        client_socket.close()
+
+# Start P2P server
+p2p_server = P2PServer()
+p2p_server.start()
+
+# Broadcast message to all connected peers
+def broadcast_message(message):
+    with lock:
+        for peer in peers:
+            threading.Thread(target=send_message, args=(peer, message)).start()
+
+# Send message to a specific peer
+def send_message(peer, message):
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect((peer, 3000))
+    client_socket.send(json.dumps(message).encode())
+    client_socket.close()
+
 
 @app.route('/mine', methods=['GET'])
 def mine():
@@ -205,6 +256,36 @@ def consensus():
 
     return jsonify(response), 200
 
+# Endpoint to broadcast an image hash to all connected peers
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    values = request.get_json()
+
+    required = ['image_hash']
+    if not all(k in values for k in required):
+        return 'Missing values', 400
+
+    image_hash = values['image_hash']
+
+    # Broadcast the image hash to all connected peers
+    message = {'type': 'broadcast', 'image_hash': image_hash}
+    broadcast_message(message)
+
+    response = {'message': 'Image hash broadcasted to peers'}
+    return jsonify(response), 200
+
+# New endpoint to get the current blockchain from another machine
+@app.route('/get_blockchain', methods=['GET'])
+def get_blockchain():
+    # Get the blockchain from a random peer
+    peer = next(iter(peers), None)
+    if peer:
+        message = {'blockchain_request': True, 'sender': node_identifier}
+        response = send_message(peer, message)
+        if 'blockchain' in response:
+            return jsonify(response['blockchain']), 200
+
+    return jsonify({'message': 'Blockchain request failed'}), 500
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
