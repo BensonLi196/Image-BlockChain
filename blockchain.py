@@ -274,18 +274,33 @@ def broadcast():
     response = {'message': 'Image hash broadcasted to peers'}
     return jsonify(response), 200
 
-# New endpoint to get the current blockchain from another machine
 @app.route('/get_blockchain', methods=['GET'])
 def get_blockchain():
-    # Get the blockchain from a random peer
-    peer = next(iter(peers), None)
-    if peer:
-        message = {'blockchain_request': True, 'sender': node_identifier}
-        response = send_message(peer, message)
-        if 'blockchain' in response:
-            return jsonify(response['blockchain']), 200
+    try:
+        # Get the blockchain from a random peer
+        peer = next(iter(peers), None)
+        if peer:
+            message = {'blockchain_request': True, 'sender': node_identifier}
+            response = send_message(peer, message)
+            if 'blockchain' in response:
+                return jsonify(response['blockchain']), 200
 
-    return jsonify({'message': 'Blockchain request failed'}), 500
+        return jsonify({'message': 'Blockchain request failed'}), 500
+    except Exception as e:
+        print(f"Error in get_blockchain: {str(e)}")
+        return jsonify({'message': 'Internal server error'}), 500
+
+FLASK_APP_URL = 'http://10.0.0.220:5000'
+
+def test_get_blockchain():
+    # Test the /get_blockchain route
+    response = requests.get(f'{FLASK_APP_URL}/get_blockchain')
+
+    if response.status_code == 200:
+        blockchain.chain = response.json()
+        print("Blockchain received:", blockchain.chain)
+    else:
+        print("Failed to get the blockchain. Status code:", response.status_code)
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -298,6 +313,8 @@ if __name__ == '__main__':
     # Start Flask app
     app_thread = threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': port, 'threaded': True})
     app_thread.start()
+
+    test_get_blockchain()
 
     try:
         while True:
