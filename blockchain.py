@@ -294,7 +294,7 @@ FLASK_APP_URL = 'http://10.0.0.220:5000'
 
 def test_get_blockchain():
     # Test the /get_blockchain route
-    response = requests.get(f'{FLASK_APP_URL}/get_blockchain')
+    response = requests.get(f'{FLASK_APP_URL}/chain')
 
     if response.status_code == 200:
         blockchain.chain = response.json()
