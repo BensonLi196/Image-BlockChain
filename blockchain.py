@@ -295,4 +295,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
     port = args.port
 
-    app.run(host='0.0.0.0', port=port)
+    # Start Flask app
+    app_thread = threading.Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': port, 'threaded': True})
+    app_thread.start()
+
+    try:
+        while True:
+            # Perform any background tasks or checks here
+
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Stop P2P server when Flask app terminates
+        p2p_server.join()
+        app_thread.join()
